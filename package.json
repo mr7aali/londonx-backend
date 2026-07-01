@@ -1,0 +1,27 @@
+{
+  "name": "londonessexelecbackend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "check": "node --check index.js && node --check src/app.js && node --check src/config/database.js && node --check src/config/loadEnv.js && node --check src/controllers/authController.js && node --check src/controllers/adminController.js && node --check src/controllers/bookingController.js && node --check src/controllers/contactController.js && node --check src/controllers/courseController.js && node --check src/controllers/notificationController.js && node --check src/controllers/stripeController.js && node --check src/controllers/teamController.js && node --check src/controllers/supportController.js && node --check src/controllers/settingsController.js && node --check src/middleware/authMiddleware.js && node --check src/middleware/errorHandler.js && node --check src/middleware/uploadMiddleware.js && node --check src/models/Booking.js && node --check src/models/User.js && node --check src/models/Course.js && node --check src/models/TeamMember.js && node --check src/models/SupportTicket.js && node --check src/models/ContactMessage.js && node --check src/models/Notification.js && node --check src/models/LegalPage.js && node --check src/models/FaqPage.js && node --check src/routes/authRoutes.js && node --check src/routes/adminRoutes.js && node --check src/routes/bookingRoutes.js && node --check src/routes/contactRoutes.js && node --check src/routes/courseRoutes.js && node --check src/routes/notificationRoutes.js && node --check src/routes/stripeRoutes.js && node --check src/routes/teamRoutes.js && node --check src/routes/supportRoutes.js && node --check src/routes/settingsRoutes.js && node --check src/scripts/seedDatabase.js && node --check src/utils/auth.js && node --check src/utils/mailer.js && node --check src/utils/notifications.js && node --check src/utils/stripe.js && node --check src/utils/stripeBooking.js",
+    "seed": "node src/scripts/seedDatabase.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cloudflared": "^0.7.1",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "mongoose": "^9.4.1",
+    "multer": "^2.1.1",
+    "nodemailer": "^8.0.5",
+    "nodemon": "^3.1.14",
+    "stripe": "^22.0.2"
+  }
+}
