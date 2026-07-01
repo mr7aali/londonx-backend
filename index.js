@@ -21,4 +21,11 @@ async function startServer() {
   }
 }
 
-startServer();
+if (process.env.VERCEL) {
+  module.exports = async function handler(req, res) {
+    await connectDatabase();
+    return app(req, res);
+  };
+} else {
+  startServer();
+}

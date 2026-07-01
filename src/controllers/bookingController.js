@@ -29,6 +29,7 @@ const {
   notifyAdminsOfBookingSubmission,
   notifyUserOfBookingApproval,
 } = require("../utils/notifications");
+const { createSignedUploadPayload } = require("../utils/cloudinary");
 
 const BOOKING_STATUSES = ["pending_payment", "confirmed", "cancelled"];
 const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"];
@@ -6497,7 +6498,27 @@ async function getMyBookingDocumentsScreen(req, res, next) {
   }
 }
 
-async function uploadMyBookingDocument(req, res, next) {
+function buildDirectUploadedDocumentPayload(body = {}) {
+  const fileUrl = normalizeString(
+    body.fileUrl || body.secureUrl || body.secure_url || body.url
+  );
+
+  if (!fileUrl) {
+    return null;
+  }
+
+  if (!/^https:\/\//i.test(fileUrl)) {
+    return { error: "A valid uploaded file URL is required" };
+  }
+
+  return {
+    fileName: normalizeString(body.fileName || body.originalFilename || body.original_filename) || "uploaded-document",
+    fileUrl,
+    mimeType: normalizeString(body.mimeType || body.resourceType || body.format),
+  };
+}
+
+async function createMyBookingDocumentUploadSignature(req, res, next) {
   try {
     const bookingResult = await findBookingForUser(req.params.id, req.user.id);
     if (bookingResult.error) {
@@ -6507,7 +6528,62 @@ async function uploadMyBookingDocument(req, res, next) {
       });
     }
 
-    if (!req.uploadedDocument) {
+    const requirementResult = resolveDocumentRequirementForUpload(
+      bookingResult.value,
+      getRequestedDocumentType(req.body)
+    );
+
+    if (requirementResult.error) {
+      return res.status(requirementResult.status).json({
+        success: false,
+        message: requirementResult.error,
+        data: {
+          validDocumentTypes: requirementResult.requirements.map((requirement) => ({
+            id: requirement.id,
+            title: requirement.title,
+          })),
+        },
+      });
+    }
+
+    const upload = createSignedUploadPayload({
+      folder: "londonessexelec/bookings/documents",
+      resourceType: "auto",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking document upload signature created successfully",
+      data: {
+        upload,
+        documentType: requirementResult.requirement.id,
+        documentLabel: requirementResult.requirement.title,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+async function uploadMyBookingDocument(req, res, next) {
+  try {
+    const bookingResult = await findBookingForUser(req.params.id, req.user.id);
+    if (bookingResult.error) {
+      return res.status(bookingResult.status).json({
+        success: false,
+        message: bookingResult.error,
+      });
+    }
+    const directUploadResult = buildDirectUploadedDocumentPayload(req.body || {});
+    if (directUploadResult?.error) {
+      return res.status(400).json({
+        success: false,
+        message: directUploadResult.error,
+      });
+    }
+
+    const uploadedFile = req.uploadedDocument || directUploadResult;
+
+    if (!uploadedFile) {
       return res.status(400).json({
         success: false,
         message: "A document file is required",
@@ -6546,9 +6622,9 @@ async function uploadMyBookingDocument(req, res, next) {
     const uploadedDocument = {
       type: documentType,
       label: documentLabel,
-      fileName: req.uploadedDocument.fileName,
-      fileUrl: req.uploadedDocument.fileUrl,
-      mimeType: req.uploadedDocument.mimeType,
+      fileName: uploadedFile.fileName,
+      fileUrl: uploadedFile.fileUrl,
+      mimeType: uploadedFile.mimeType,
       uploadedAt: new Date(),
     };
 
@@ -7484,10 +7560,21 @@ async function requestMyBookingTrainingProviderSignature(req, res, next) {
         message: requestPayloadResult.error,
       });
     }
-
-    const token = crypto.randomBytes(24).toString("hex");
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
     const requestPayload = requestPayloadResult.value;
+    const existingRequest = bookingResult.value.trainingProviderSignatureRequest || {};
+    const existingExpiresAt = existingRequest.expiresAt
+      ? new Date(existingRequest.expiresAt)
+      : null;
+    const canReuseExistingToken =
+      normalizeString(existingRequest.token) &&
+      existingExpiresAt &&
+      existingExpiresAt.getTime() > Date.now();
+    const token = canReuseExistingToken
+      ? normalizeString(existingRequest.token)
+      : crypto.randomBytes(24).toString("hex");
+    const expiresAt = canReuseExistingToken
+      ? existingExpiresAt
+      : new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
     const signatureLink = getTrainingProviderSignatureLink(token);
     const signatureApiUrl = getTrainingProviderSignatureApiUrl(token);
 
@@ -7512,46 +7599,40 @@ async function requestMyBookingTrainingProviderSignature(req, res, next) {
     };
 
     await bookingResult.value.save();
+    setImmediate(async () => {
+      try {
+        await sendTrainingProviderSignatureRequestEmail({
+          to: requestPayload.email,
+          providerName: requestPayload.name,
+          candidateName: bookingResult.value.personalDetails?.fullName || "",
+          courseTitle: bookingResult.value.courseSnapshot?.title || "",
+          subject: requestPayload.subject,
+          message: requestPayload.message,
+          signatureLink,
+          signatureApiUrl,
+          expiresAt,
+        });
+        console.log("[training-provider-signature-email] sent", requestPayload.email);
+      } catch (emailError) {
+        console.error(
+          "[training-provider-signature-email]",
+          getMailDeliveryFailureMessage(emailError),
+          emailError?.message || emailError
+        );
+      }
+    });
 
-    let emailDelivery = {
-      sent: false,
-      message: "",
-    };
-
-    try {
-      await sendTrainingProviderSignatureRequestEmail({
-        to: requestPayload.email,
-        providerName: requestPayload.name,
-        candidateName: bookingResult.value.personalDetails?.fullName || "",
-        courseTitle: bookingResult.value.courseSnapshot?.title || "",
-        subject: requestPayload.subject,
-        message: requestPayload.message,
-        signatureLink,
-        signatureApiUrl,
-        expiresAt,
-      });
-
-      emailDelivery = {
-        sent: true,
-        message: "Email sent successfully",
-      };
-    } catch (emailError) {
-      emailDelivery = {
-        sent: false,
-        message: getMailDeliveryFailureMessage(emailError),
-      };
-      console.error("[training-provider-signature-email]", emailError?.message || emailError);
-    }
-
-    return res.status(emailDelivery.sent ? 200 : 502).json({
-      success: emailDelivery.sent,
-      message: emailDelivery.sent
-        ? "Training provider signature request sent successfully"
-        : "Training provider signature request was saved, but email delivery failed",
+    return res.status(202).json({
+      success: true,
+      message: "Training provider signature request saved. Email delivery is processing.",
       data: {
         requested: true,
-        emailSent: emailDelivery.sent,
-        emailDelivery,
+        emailSent: false,
+        emailDelivery: {
+          sent: false,
+          pending: true,
+          message: "Email delivery is processing in the background",
+        },
         email: requestPayload.email,
         link: signatureLink,
         signatureLink,
@@ -8292,6 +8373,7 @@ module.exports = {
   listMyBookings,
   getMyBookingById,
   getMyBookingDocumentsScreen,
+  createMyBookingDocumentUploadSignature,
   uploadMyBookingDocument,
   getMyBookingChecklistScreen,
   getMyBookingChecklistFullScreen,
@@ -8321,3 +8403,10 @@ module.exports = {
   getAdminBookingById,
   updateAdminBooking,
 };
+
+
+
+
+
+
+

@@ -50,7 +50,40 @@ function uploadBufferToCloudinary(buffer, options = {}) {
   });
 }
 
+function createSignedUploadPayload(options = {}) {
+  ensureCloudinaryConfigured();
+
+  const cloudName = normalizeString(process.env.CLOUDINARY_CLOUD_NAME);
+  const apiKey = normalizeString(process.env.CLOUDINARY_API_KEY);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = normalizeString(options.folder);
+  const resourceType = normalizeString(options.resourceType) || "auto";
+  const paramsToSign = {
+    timestamp,
+  };
+
+  if (folder) {
+    paramsToSign.folder = folder;
+  }
+
+  const signature = cloudinary.utils.api_sign_request(
+    paramsToSign,
+    normalizeString(process.env.CLOUDINARY_API_SECRET)
+  );
+
+  return {
+    cloudName,
+    apiKey,
+    timestamp,
+    folder,
+    resourceType,
+    signature,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+  };
+}
+
 module.exports = {
+  createSignedUploadPayload,
   isCloudinaryConfigured,
   uploadBufferToCloudinary,
 };

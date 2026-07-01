@@ -12,6 +12,7 @@ const {
   listMyBookings,
   getMyBookingById,
   getMyBookingDocumentsScreen,
+  createMyBookingDocumentUploadSignature,
   uploadMyBookingDocument,
   getMyBookingChecklistScreen,
   getMyBookingChecklistFullScreen,
@@ -61,6 +62,7 @@ router.get("/dashboard", getMyDashboard);
 router.get("/", listMyBookings);
 router.post("/", createBooking);
 router.get("/:id/flow/documents", getMyBookingDocumentsScreen);
+router.post("/:id/flow/documents/upload-signature", createMyBookingDocumentUploadSignature);
 router.post("/:id/flow/documents/upload", uploadBookingDocument, uploadMyBookingDocument);
 router.get("/:id/flow/checklist", getMyBookingChecklistScreen);
 router.get("/:id/flow/checklist/full", getMyBookingChecklistFullScreen);
@@ -95,3 +97,4 @@ router.get("/:id/payment/status", getMyBookingPaymentStatus);
 router.post("/:id/payment", payForMyBooking);
 
 module.exports = router;
+
